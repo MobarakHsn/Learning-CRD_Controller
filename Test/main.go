@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 	"os"
@@ -67,22 +66,10 @@ func main() {
 		panic(err)
 	}
 
+	ch := make(chan struct{})
+	defer close(ch)
 	informerfactory := informers.NewSharedInformerFactory(clientset, 30*time.Second)
-	podinformer := informerfactory.Core().V1().Pods()
-
-	podinformer.Informer().AddEventHandler(
-
-		&cache.ResourceEventHandlerFuncs{
-
-			AddFunc: addPod,
-
-			DeleteFunc: deletePod,
-
-			UpdateFunc: updatePod, // We can remove this update as we need to monitor add & deletion of pods activity only
-		})
-	stopChan := make(chan struct{})
-	// To stop the channel automatically at the end of our main functions
-	defer close(stopChan)
-	go podinformer.Informer().Run(stopChan)
-	<-stopChan
+	c := newController(clientset, informerfactory.Apps().V1().Deployments())
+	informerfactory.Start(ch)
+	c.run(ch)
 }
